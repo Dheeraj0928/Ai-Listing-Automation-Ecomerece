@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     """Global application settings loaded from environment variables."""
 
     # ---- Database ----
-    DATABASE_URL: str = "postgresql+asyncpg://listingadmin:listingpass123@localhost:5432/listing_automation"
-    DATABASE_URL_SYNC: str = "postgresql://listingadmin:listingpass123@localhost:5432/listing_automation"
+    DATABASE_URL: str = "postgresql+asyncpg://listingadmin:listingpass123@localhost:5433/listing_automation"
+    DATABASE_URL_SYNC: str = "postgresql://listingadmin:listingpass123@localhost:5433/listing_automation"
 
     # ---- Redis ----
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -14,12 +14,12 @@ from app.core.exceptions import register_exception_handlers
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
     # Startup
-    print("🚀 Starting AI Listing Automation Platform...")
-    print(f"📡 Database: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'configured'}")
-    print(f"🔑 Debug mode: {settings.DEBUG}")
+    print("[*] Starting AI Listing Automation Platform...")
+    print(f"[DB] Database: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'configured'}")
+    print(f"[DEBUG] Debug mode: {settings.DEBUG}")
     yield
     # Shutdown
-    print("🛑 Shutting down...")
+    print("[*] Shutting down...")
     from app.core.database import engine
     await engine.dispose()
 

@@ -109,6 +109,79 @@ export interface ProductListResponse {
   total_pages: number;
 }
 
+// ---- Marketplace Listings ----
+export interface MarketplaceListing {
+  id: string;
+  product_id: string;
+  user_id: string;
+  marketplace: 'amazon' | 'flipkart' | 'meesho';
+  marketplace_listing_id: string | null;
+  status: 'draft' | 'ai_generated' | 'validated' | 'needs_review' | 'approved' | 'publishing' | 'published' | 'error';
+  listing_data: Record<string, unknown> | null;
+  marketplace_specific_data: Record<string, unknown> | null;
+  completion_percentage: number | null;
+  validation_results: {
+    is_valid: boolean;
+    errors: { field: string; message: string }[];
+    warnings: { field: string; message: string }[];
+  } | null;
+  version: number;
+  error_message: string | null;
+  published_at: string | null;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListingListResponse {
+  items: MarketplaceListing[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+// ---- Marketplace Accounts ----
+export interface MarketplaceAccount {
+  id: string;
+  user_id: string;
+  marketplace: 'amazon' | 'flipkart' | 'meesho';
+  account_id: string | null;
+  account_name: string | null;
+  status: 'connected' | 'disconnected' | 'error';
+  config: Record<string, unknown> | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+  listing_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---- Seller Memory ----
+export interface SellerMemory {
+  id: string;
+  user_id: string;
+  field_name: string;
+  field_value: string;
+  source: 'manual' | 'ai_suggested' | 'imported';
+  scope: 'global' | 'marketplace' | 'product';
+  marketplace: string | null;
+  product_id: string | null;
+  priority: number;
+  is_active: boolean;
+  usage_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SellerMemoryListResponse {
+  items: SellerMemory[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 // ---- Dashboard ----
 export interface DashboardStats {
   total_products: number;
