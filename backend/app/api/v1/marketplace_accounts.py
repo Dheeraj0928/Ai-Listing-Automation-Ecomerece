@@ -83,8 +83,38 @@ async def test_connection(
     user: User = Depends(get_current_user),
     svc: MarketplaceService = Depends(_get_service),
 ):
-    """Test if marketplace credentials are valid without saving."""
+    import json
     from app.marketplace import get_marketplace_adapter
+
+    # Check if real credentials exist for this user
+    account = await svc.marketplace_repo.get_by_marketplace(user.id, marketplace)
+    if marketplace.lower() == "flipkart" and account and account.encrypted_credentials:
+        try:
+            creds = json.loads(account.encrypted_credentials)
+            app_id = creds.get("app_id")
+            app_secret = creds.get("app_secret")
+            if app_id and app_secret:
+                from app.marketplace.flipkart import FlipkartAdapter
+                fk_adapter = FlipkartAdapter(app_id=app_id, app_secret=app_secret)
+                token, err = await fk_adapter.get_access_token()
+                if token:
+                    return {
+                        "status": "success",
+                        "marketplace": marketplace,
+                        "message": "Flipkart Live API is Connected and Active!",
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "marketplace": marketplace,
+                        "message": f"{err}",
+                    }
+        except Exception as e:
+            return {
+                "status": "error",
+                "marketplace": marketplace,
+                "message": f"Connection test failed: {str(e)}",
+            }
 
     adapter = get_marketplace_adapter(marketplace)
     try:

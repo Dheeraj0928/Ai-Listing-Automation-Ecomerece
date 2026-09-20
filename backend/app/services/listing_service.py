@@ -13,6 +13,7 @@ from app.models.listing_version import ListingVersion
 from app.models.marketplace_listing import MarketplaceListing
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.listing_repo import ListingRepository
+from app.repositories.marketplace_repo import MarketplaceRepository
 from app.schemas.listing import (
     ListingListResponse,
     ListingResponse,
@@ -27,6 +28,7 @@ class ListingService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.listing_repo = ListingRepository(db)
+        self.marketplace_repo = MarketplaceRepository(db)
         self.audit_repo = AuditRepository(db)
 
     async def get_listing(self, user_id: uuid.UUID, listing_id: uuid.UUID) -> ListingResponse:
@@ -124,7 +126,24 @@ class ListingService:
         if listing is None or listing.user_id != user_id:
             raise NotFoundError("Listing", str(listing_id))
 
-        adapter = get_marketplace_adapter(listing.marketplace)
+        import json
+        adapter = None
+        if listing.marketplace.lower() == "flipkart":
+            account = await self.marketplace_repo.get_by_marketplace(user_id, "flipkart")
+            if account and account.encrypted_credentials:
+                try:
+                    creds = json.loads(account.encrypted_credentials)
+                    app_id = creds.get("app_id")
+                    app_secret = creds.get("app_secret")
+                    if app_id and app_secret:
+                        from app.marketplace.flipkart import FlipkartAdapter
+                        adapter = FlipkartAdapter(app_id=app_id, app_secret=app_secret)
+                except Exception:
+                    pass
+
+        if adapter is None:
+            adapter = get_marketplace_adapter(listing.marketplace)
+
         listing.status = "publishing"
         await self.db.flush()
 
