@@ -26,6 +26,9 @@ export default function ListingDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [editData, setEditData] = useState<Record<string, unknown>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'editor' | 'versions'>('editor');
+  const [versions, setVersions] = useState<{ id: string; version_number: number; snapshot: Record<string, unknown>; changes: Record<string, unknown> | null; changed_by: string; change_reason: string; created_at: string }[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
 
   const listingId = params.id as string;
 
@@ -163,6 +166,40 @@ export default function ListingDetailPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 bg-slate-100 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('editor')}
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            activeTab === 'editor'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Editor
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('versions');
+            if (versions.length === 0 && !versionsLoading) {
+              setVersionsLoading(true);
+              api.get<{ data: typeof versions }>(`/listings/${listingId}/versions`)
+                .then((res) => setVersions(res.data || []))
+                .catch(() => addToast({ type: 'error', title: 'Failed to load versions' }))
+                .finally(() => setVersionsLoading(false));
+            }
+          }}
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            activeTab === 'versions'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Version History
+        </button>
+      </div>
+
+      {activeTab === 'editor' && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main editor */}
         <div className="lg:col-span-2 space-y-5">
@@ -287,6 +324,88 @@ export default function ListingDetailPage() {
           )}
         </div>
       </div>
+      )}
+
+      {/* Version History Tab */}
+      {activeTab === 'versions' && (
+        <div className="space-y-4">
+          {versionsLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : versions.length === 0 ? (
+            <div className="text-center py-16 bg-slate-50 rounded-2xl border border-slate-200">
+              <svg className="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-semibold text-slate-700">No version history</h3>
+              <p className="text-sm text-slate-500 mt-1">Version snapshots are created each time the listing is updated</p>
+            </div>
+          ) : (
+            versions.map((ver) => (
+              <div key={ver.id} className="bg-white rounded-2xl border border-slate-200 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">
+                      v{ver.version_number}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">
+                        {ver.change_reason || `Version ${ver.version_number}`}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {ver.created_at ? new Date(ver.created_at).toLocaleString('en-IN', {
+                          day: '2-digit', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        }) : '—'}
+                        {ver.changed_by && ` · by ${ver.changed_by}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {ver.changes && Object.keys(ver.changes).length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wider">Changes</h4>
+                    <div className="grid gap-2">
+                      {Object.entries(ver.changes).map(([field, change]) => (
+                        <div key={field} className="bg-slate-50 rounded-lg p-3">
+                          <p className="text-xs font-medium text-slate-700 mb-1 capitalize">{field.replace(/_/g, ' ')}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <p className="text-xs text-red-500 font-medium mb-0.5">Before</p>
+                              <pre className="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 overflow-auto max-h-20">
+                                {typeof (change as Record<string, unknown>)?.old === 'string'
+                                  ? (change as Record<string, unknown>).old as string
+                                  : JSON.stringify((change as Record<string, unknown>)?.old, null, 2)}
+                              </pre>
+                            </div>
+                            <div>
+                              <p className="text-xs text-green-500 font-medium mb-0.5">After</p>
+                              <pre className="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 overflow-auto max-h-20">
+                                {typeof (change as Record<string, unknown>)?.new === 'string'
+                                  ? (change as Record<string, unknown>).new as string
+                                  : JSON.stringify((change as Record<string, unknown>)?.new, null, 2)}
+                              </pre>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {ver.snapshot && (
+                  <details className="mt-3">
+                    <summary className="text-xs font-medium text-indigo-600 cursor-pointer hover:text-indigo-700">View full snapshot</summary>
+                    <pre className="mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto max-h-48">
+                      {JSON.stringify(ver.snapshot, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -36,6 +36,8 @@ export default function MarketplacesPage() {
   const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
   const { addToast } = useToast();
 
   const fetchAccounts = async () => {
@@ -79,12 +81,30 @@ export default function MarketplacesPage() {
   };
 
   const handleSync = async (marketplace: string) => {
+    setSyncing(marketplace);
     try {
       await api.post(`/marketplaces/${marketplace}/sync`, {});
       addToast({ type: 'success', title: `Synced with ${marketplace.charAt(0).toUpperCase() + marketplace.slice(1)}` });
       fetchAccounts();
     } catch {
       addToast({ type: 'error', title: 'Sync failed' });
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const handleTestConnection = async (marketplace: string) => {
+    setTesting(marketplace);
+    try {
+      const result = await api.post<{ status: string; message: string }>(`/marketplaces/${marketplace}/test-connection`, {});
+      addToast({
+        type: result.status === 'success' ? 'success' : 'error',
+        title: result.message,
+      });
+    } catch {
+      addToast({ type: 'error', title: 'Test connection failed' });
+    } finally {
+      setTesting(null);
     }
   };
 
@@ -150,10 +170,18 @@ export default function MarketplacesPage() {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleSync(mp.id)}
-                        className="flex-1 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors"
+                        onClick={() => handleTestConnection(mp.id)}
+                        disabled={testing === mp.id}
+                        className="flex-1 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors disabled:opacity-50"
                       >
-                        Sync Now
+                        {testing === mp.id ? 'Testing...' : 'Test'}
+                      </button>
+                      <button
+                        onClick={() => handleSync(mp.id)}
+                        disabled={syncing === mp.id}
+                        className="flex-1 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                      >
+                        {syncing === mp.id ? 'Syncing...' : 'Sync'}
                       </button>
                       <button
                         onClick={() => handleDisconnect(mp.id)}
