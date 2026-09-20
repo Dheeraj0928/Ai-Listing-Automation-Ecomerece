@@ -20,6 +20,11 @@ export default function SignupPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
+    if (password.length < 8) {
+      addToast({ type: 'error', title: 'Password Too Short', message: 'Password must be at least 8 characters long.' });
+      return;
+    }
+
     if (password !== confirmPassword) {
       addToast({ type: 'error', title: 'Passwords do not match' });
       return;

@@ -105,14 +105,30 @@ async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    let errorData: { message?: string; details?: Record<string, unknown> } = {};
+    let errorData: {
+      message?: string;
+      detail?: string | Array<{ msg: string; loc?: string[] }>;
+      details?: Record<string, unknown>;
+    } = {};
     try {
       errorData = await response.json();
     } catch {
       // Ignore JSON parse error
     }
+
+    const detailMessage = Array.isArray(errorData.detail)
+      ? errorData.detail.map((d) => d.msg).join(', ')
+      : typeof errorData.detail === 'string'
+      ? errorData.detail
+      : '';
+
+    const message =
+      errorData.message ||
+      detailMessage ||
+      `Request failed with status ${response.status}`;
+
     throw new ApiError(
-      errorData.message || `Request failed with status ${response.status}`,
+      message,
       response.status,
       errorData.details || {},
     );

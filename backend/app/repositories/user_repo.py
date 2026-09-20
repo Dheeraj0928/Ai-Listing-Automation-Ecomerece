@@ -28,3 +28,4 @@ class UserRepository(BaseRepository[User]):
         from datetime import datetime, timezone
         user.last_login_at = datetime.now(timezone.utc)
         await self.db.flush()
+        await self.db.refresh(user)

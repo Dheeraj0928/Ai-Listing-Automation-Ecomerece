@@ -1,6 +1,7 @@
 """Custom exception classes and FastAPI exception handlers."""
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 
@@ -54,6 +55,23 @@ class ValidationError(AppException):
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Register custom exception handlers on the FastAPI app."""
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = exc.errors()
+        messages = []
+        for err in errors:
+            loc = " -> ".join([str(l) for l in err.get("loc", []) if l != "body"])
+            msg = err.get("msg", "Invalid input")
+            messages.append(f"{loc}: {msg}" if loc else msg)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": True,
+                "message": "; ".join(messages) if messages else "Validation failed",
+                "details": errors,
+            },
+        )
 
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
