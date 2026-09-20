@@ -29,20 +29,31 @@ class MarketplaceService:
         self, user_id: uuid.UUID, data: MarketplaceAccountCreate
     ) -> MarketplaceAccountResponse:
         """Connect a new marketplace account."""
-        if await self.marketplace_repo.marketplace_exists(user_id, data.marketplace):
-            raise ConflictError(f"{data.marketplace.title()} account is already connected")
-
-        account_data = {
-            "user_id": user_id,
-            "marketplace": data.marketplace,
-            "account_id": data.account_id,
-            "account_name": data.account_name or f"My {data.marketplace.title()} Account",
-            "status": "connected",
-            "encrypted_credentials": json.dumps(data.credentials) if data.credentials else None,
-            "config": data.config,
-        }
-
-        account = await self.marketplace_repo.create(account_data)
+        existing = await self.marketplace_repo.get_by_marketplace(user_id, data.marketplace)
+        if existing:
+            existing.status = "connected"
+            existing.account_name = data.account_name or f"My {data.marketplace.title()} Account"
+            if data.account_id:
+                existing.account_id = data.account_id
+            if data.credentials:
+                existing.encrypted_credentials = json.dumps(data.credentials)
+            if data.config:
+                existing.config = data.config
+            existing.last_error = None
+            await self.db.flush()
+            await self.db.refresh(existing)
+            account = existing
+        else:
+            account_data = {
+                "user_id": user_id,
+                "marketplace": data.marketplace,
+                "account_id": data.account_id,
+                "account_name": data.account_name or f"My {data.marketplace.title()} Account",
+                "status": "connected",
+                "encrypted_credentials": json.dumps(data.credentials) if data.credentials else None,
+                "config": data.config,
+            }
+            account = await self.marketplace_repo.create(account_data)
 
         await self.audit_repo.log_action(
             user_id=user_id,
