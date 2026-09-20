@@ -234,3 +234,57 @@ export interface SuccessResponse {
   message: string;
   data?: Record<string, unknown> | null;
 }
+
+// ---- Bulk Operations ----
+export interface BulkJobStatus {
+  job_id: string;
+  status: 'processing' | 'completed' | 'not_found';
+  total: number;
+  completed: number;
+  created: number;
+  errors: number;
+  error_details?: {
+    row?: number;
+    sku?: string;
+    product_id?: string;
+    marketplace?: string;
+    error: string;
+  }[];
+}
+
+// ---- Audit Logs ----
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+// ---- Listing Versions ----
+export interface ListingVersion {
+  id: string;
+  listing_id: string;
+  version_number: number;
+  snapshot: {
+    listing_data: Record<string, unknown> | null;
+    marketplace_specific_data: Record<string, unknown> | null;
+    status: string;
+  };
+  changes: Record<string, unknown> | null;
+  changed_by: string;
+  change_reason: string;
+  created_at: string;
+}
+

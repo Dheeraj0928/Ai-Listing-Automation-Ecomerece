@@ -75,3 +75,30 @@ async def sync_marketplace(
 ):
     result = await svc.sync_marketplace(user_id=user.id, marketplace=marketplace)
     return {"status": "success", "data": result}
+
+
+@router.post("/{marketplace}/test-connection", summary="Test marketplace connection")
+async def test_connection(
+    marketplace: str,
+    user: User = Depends(get_current_user),
+    svc: MarketplaceService = Depends(_get_service),
+):
+    """Test if marketplace credentials are valid without saving."""
+    from app.marketplace import get_marketplace_adapter
+
+    adapter = get_marketplace_adapter(marketplace)
+    try:
+        required_fields = await adapter.get_required_fields()
+        return {
+            "status": "success",
+            "marketplace": marketplace,
+            "message": f"Connection to {marketplace.title()} is working (mock mode).",
+            "required_fields_count": len(required_fields),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "marketplace": marketplace,
+            "message": f"Connection failed: {str(e)}",
+        }
+

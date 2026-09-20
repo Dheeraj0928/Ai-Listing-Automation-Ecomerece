@@ -1,9 +1,12 @@
 """FastAPI application entry point."""
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import v1_router
 from app.core.config import settings
@@ -17,6 +20,8 @@ async def lifespan(app: FastAPI):
     print("[*] Starting AI Listing Automation Platform...")
     print(f"[DB] Database: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'configured'}")
     print(f"[DEBUG] Debug mode: {settings.DEBUG}")
+    # Ensure uploads directory exists
+    Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     yield
     # Shutdown
     print("[*] Shutting down...")
@@ -47,6 +52,9 @@ register_exception_handlers(app)
 
 # Mount API router
 app.include_router(v1_router)
+
+# Serve uploaded files as static assets
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.get("/health", tags=["Health"])
