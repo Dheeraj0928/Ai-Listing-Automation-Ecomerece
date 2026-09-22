@@ -14,6 +14,7 @@ from app.api.v1.seller_memory import router as seller_memory_router
 from app.api.v1.images import router as images_router
 from app.api.v1.bulk import router as bulk_router
 from app.api.v1.audit import router as audit_router
+from app.api.v1.reference_import import router as reference_import_router
 
 v1_router = APIRouter(prefix="/api/v1")
 
@@ -29,5 +30,6 @@ v1_router.include_router(seller_memory_router)
 v1_router.include_router(images_router)
 v1_router.include_router(bulk_router)
 v1_router.include_router(audit_router)
+v1_router.include_router(reference_import_router)
 
 
