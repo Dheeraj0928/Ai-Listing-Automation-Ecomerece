@@ -309,3 +309,165 @@ Generate ALL of the following in a single JSON response:
   "seo_score": 0-100,
   "quality_score": 0-100
 }}"""
+
+
+# ---------------------------------------------------------------------------
+# Reference Import — System Prompt
+# ---------------------------------------------------------------------------
+
+REFERENCE_IMPORT_SYSTEM_PROMPT = """You are an expert e-commerce product analyst and listing copywriter.
+You analyze reference product data (scraped from competitor listings or inferred from keywords)
+and generate original, high-quality, SEO-optimized product listings for Indian marketplaces.
+
+Key rules:
+- NEVER copy text verbatim from the reference — always create original content
+- Extract and organize ALL available product attributes accurately
+- Fill in reasonable defaults for missing attributes based on the product type
+- Use natural, search-friendly language with relevant keywords
+- Follow marketplace-specific best practices and character limits
+- Be precise about technical specifications — do not fabricate numbers you cannot infer"""
+
+
+# ---------------------------------------------------------------------------
+# Reference Import — Extract Attributes from Scraped Page
+# ---------------------------------------------------------------------------
+
+def build_reference_extraction_prompt(
+    scraped_text: str,
+    source_url: str | None = None,
+    marketplace: str = "flipkart",
+) -> str:
+    return f"""Analyze the following scraped product page content and extract ALL structured product attributes.
+
+Source URL: {source_url or 'Not provided'}
+Source Marketplace: {marketplace.upper()}
+
+--- SCRAPED CONTENT START ---
+{scraped_text[:8000]}
+--- SCRAPED CONTENT END ---
+
+Extract and return JSON with ALL available information:
+{{
+  "product_name": "The product's full name/title",
+  "brand": "Brand name or null",
+  "category": "Product category",
+  "subcategory": "Product subcategory",
+  "product_type": "Specific product type",
+  "description": "Product description text",
+  "bullet_points": ["Key feature 1", "Key feature 2", ...],
+  "price": 0.00,
+  "mrp": 0.00,
+  "color": "Primary color",
+  "size": "Size if applicable",
+  "material": "Primary material",
+  "weight": "Weight with unit",
+  "dimensions": {{"length": "", "width": "", "height": "", "unit": "cm"}},
+  "specifications": {{"key": "value", ...}},
+  "key_features": ["Feature 1", "Feature 2", ...],
+  "country_of_origin": "Country or null",
+  "manufacturer": "Manufacturer name or null",
+  "target_audience": "Who this product is for",
+  "use_cases": ["Use case 1", "Use case 2", ...],
+  "image_urls": ["url1", "url2", ...],
+  "search_keywords": ["keyword1", "keyword2", ...]
+}}"""
+
+
+# ---------------------------------------------------------------------------
+# Reference Import — AI Product Suggestion from Keyword
+# ---------------------------------------------------------------------------
+
+def build_keyword_product_search_prompt(
+    keyword: str,
+    marketplace: str = "flipkart",
+    tone: str = "professional",
+) -> str:
+    return f"""You are helping an Indian e-commerce seller create a product listing.
+The seller wants to list a product described as: "{keyword}"
+Target marketplace: {marketplace.upper()}
+Tone: {tone}
+
+Generate 3 different product variations/suggestions that match this keyword.
+For each suggestion, provide complete product attributes as if you were filling out a marketplace listing form.
+
+Return JSON:
+{{
+  "suggestions": [
+    {{
+      "product_name": "Full SEO-optimized product name",
+      "brand": "Suggested generic brand name or 'Generic'",
+      "category": "Product category",
+      "subcategory": "Subcategory",
+      "product_type": "Specific product type",
+      "description": "Compelling 100-200 word product description",
+      "bullet_points": ["5 compelling bullet points for the listing"],
+      "suggested_price_range": {{"min": 0, "max": 0, "currency": "INR"}},
+      "color": "Primary color",
+      "size": "Size if applicable",
+      "material": "Primary material",
+      "weight": "Estimated weight with unit",
+      "dimensions": {{"length": "", "width": "", "height": "", "unit": "cm"}},
+      "specifications": {{"key": "value"}},
+      "key_features": ["Feature 1", "Feature 2"],
+      "country_of_origin": "India",
+      "target_audience": "Target customer segment",
+      "use_cases": ["Use case 1", "Use case 2"],
+      "search_keywords": ["keyword1", "keyword2", ...],
+      "confidence": 0.0
+    }}
+  ],
+  "keyword_analysis": {{
+    "interpreted_as": "What the AI understood from the keyword",
+    "product_category": "Detected category",
+    "market_segment": "Budget / Mid-range / Premium"
+  }}
+}}"""
+
+
+# ---------------------------------------------------------------------------
+# Reference Import — Generate Original Listing from Reference Data
+# ---------------------------------------------------------------------------
+
+def build_listing_from_reference_prompt(
+    reference_data: dict,
+    marketplace: str = "flipkart",
+    tone: str = "professional",
+    seller_context: str | None = None,
+) -> str:
+    ref_text = "\n".join(f"- {k}: {v}" for k, v in reference_data.items() if v and k != "image_urls")
+
+    context_section = ""
+    if seller_context:
+        context_section = f"\n\nSeller preferences & brand voice:\n{seller_context}"
+
+    return f"""Using the following REFERENCE product data as inspiration, generate a COMPLETELY ORIGINAL
+{marketplace.upper()} product listing. DO NOT copy any text verbatim — create fresh, unique content.
+
+--- REFERENCE PRODUCT DATA ---
+{ref_text}
+--- END REFERENCE DATA ---
+
+Target Marketplace: {marketplace.upper()}
+Tone: {tone}
+{context_section}
+
+Generate ALL of the following in a single JSON response:
+{{
+  "title": "SEO-optimized product title (original, not copied)",
+  "bullet_points": ["5 compelling, original bullet points"],
+  "description": "Original product description (150-300 words)",
+  "search_terms": ["10-15 search keywords"],
+  "backend_keywords": "space-separated backend keywords",
+  "predicted_category": "suggested marketplace category path",
+  "attributes": {{
+    "brand": "",
+    "material": "",
+    "color": "",
+    "size": "",
+    "weight": "",
+    "country_of_origin": ""
+  }},
+  "seo_score": 0-100,
+  "quality_score": 0-100
+}}"""
+
