@@ -137,7 +137,8 @@ class ImageService:
             raise NotFoundError("Image", str(image_id))
 
         # Delete file from disk
-        file_path = Path(settings.UPLOAD_DIR) / image.url.lstrip("/uploads/")
+        rel_path = image.url.removeprefix("/uploads/").lstrip("/")
+        file_path = Path(settings.UPLOAD_DIR) / rel_path
         if file_path.exists():
             file_path.unlink()
 
@@ -250,3 +251,177 @@ class ImageService:
             }
             for img in images
         ]
+
+    async def convert_to_white_background(
+        self, user_id: uuid.UUID, product_id: uuid.UUID, image_id: uuid.UUID
+    ) -> dict:
+        """Process an existing image into a 1000x1000 Amazon-compliant pure white (#FFFFFF) background."""
+        from PIL import Image
+
+        await self._get_product(product_id, user_id)
+        current_count = await self._count_images(product_id)
+        if current_count >= MAX_IMAGES_PER_PRODUCT:
+            raise ValidationError(f"Maximum {MAX_IMAGES_PER_PRODUCT} images per product reached.")
+
+        result = await self.db.execute(
+            select(ProductImage).where(
+                ProductImage.id == image_id,
+                ProductImage.product_id == product_id,
+            )
+        )
+        orig_image = result.scalar_one_or_none()
+        if not orig_image:
+            raise NotFoundError("Image", str(image_id))
+
+        rel_path = orig_image.url.removeprefix("/uploads/").lstrip("/")
+        orig_path = Path(settings.UPLOAD_DIR) / rel_path
+        if not orig_path.exists():
+            raise ValidationError("Original image file not found on server.")
+
+        # Open and process image
+        with Image.open(orig_path) as im:
+            im = im.convert("RGBA")
+            target_size = 1000
+            canvas = Image.new("RGBA", (target_size, target_size), (255, 255, 255, 255))
+
+            # Resize keeping aspect ratio (occupying ~85% of frame per marketplace standards)
+            max_dimension = int(target_size * 0.86)
+            orig_w, orig_h = im.size
+            scale = min(max_dimension / orig_w, max_dimension / orig_h)
+            new_w = int(orig_w * scale)
+            new_h = int(orig_h * scale)
+            resized = im.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            # Center paste
+            offset_x = (target_size - new_w) // 2
+            offset_y = (target_size - new_h) // 2
+            canvas.paste(resized, (offset_x, offset_y), mask=resized)
+
+            final_rgb = canvas.convert("RGB")
+            new_file_id = uuid.uuid4()
+            saved_filename = f"{new_file_id}_studio_white.jpg"
+            upload_dir = self._product_upload_dir(product_id)
+            out_path = upload_dir / saved_filename
+            final_rgb.save(out_path, "JPEG", quality=95)
+
+        url = f"/uploads/products/{product_id}/{saved_filename}"
+        new_image = ProductImage(
+            product_id=product_id,
+            url=url,
+            filename=f"Studio White - {orig_image.filename}",
+            image_type="white_bg",
+            sort_order=current_count,
+            is_primary=False,
+            is_ai_generated=True,
+        )
+        self.db.add(new_image)
+        await self.db.flush()
+        await self.db.refresh(new_image)
+
+        return {
+            "id": str(new_image.id),
+            "url": new_image.url,
+            "filename": new_image.filename,
+            "image_type": new_image.image_type,
+            "sort_order": new_image.sort_order,
+            "is_primary": new_image.is_primary,
+            "is_ai_generated": True,
+        }
+
+    async def generate_product_mockup(
+        self, user_id: uuid.UUID, product_id: uuid.UUID, style: str = "studio"
+    ) -> dict:
+        """Generate a clean AI catalog studio mockup image for products without camera photos."""
+        from PIL import Image, ImageDraw, ImageFont
+
+        product = await self._get_product(product_id, user_id)
+        current_count = await self._count_images(product_id)
+        if current_count >= MAX_IMAGES_PER_PRODUCT:
+            raise ValidationError(f"Maximum {MAX_IMAGES_PER_PRODUCT} images per product reached.")
+
+        size = 1000
+        canvas = Image.new("RGB", (size, size), (255, 255, 255))
+        draw = ImageDraw.Draw(canvas)
+
+        # Draw a sleek studio card container
+        margin = 60
+        draw.rectangle(
+            [margin, margin, size - margin, size - margin],
+            fill=(248, 250, 252),
+            outline=(226, 232, 240),
+            width=3,
+        )
+
+        # Decorative inner shadow & header bar
+        draw.rectangle([margin, margin, size - margin, margin + 110], fill=(238, 242, 255))
+        draw.line([margin, margin + 110, size - margin, margin + 110], fill=(199, 210, 254), width=2)
+
+        # Brand / category text
+        brand_text = f"★ {product.brand or 'EXCLUSIVE BRAND'} ★".upper()
+        draw.text((margin + 30, margin + 40), brand_text, fill=(79, 70, 229))
+
+        # Title
+        title_lines = [product.product_name[i:i+38] for i in range(0, min(len(product.product_name), 114), 38)]
+        y_pos = margin + 160
+        for line in title_lines:
+            draw.text((margin + 40, y_pos), line, fill=(15, 23, 42))
+            y_pos += 45
+
+        # Specs box
+        specs_top = y_pos + 40
+        draw.rectangle(
+            [margin + 40, specs_top, size - margin - 40, specs_top + 280],
+            fill=(255, 255, 255),
+            outline=(203, 213, 225),
+            width=2,
+        )
+
+        draw.text((margin + 60, specs_top + 25), "PRODUCT CATALOG SPECIFICATIONS", fill=(100, 116, 139))
+        draw.line([margin + 60, specs_top + 55, size - margin - 60, specs_top + 55], fill=(226, 232, 240), width=1)
+
+        specs = [
+            f"SKU: {product.sku}",
+            f"Category: {product.subcategory or product.product_type or 'General Merchandise'}",
+            f"Color: {product.color or 'Standard'}",
+            f"Price: Rs. {product.price or 'N/A'}",
+            f"Origin: {product.country_of_origin or 'India'}",
+        ]
+        spec_y = specs_top + 75
+        for s in specs:
+            draw.text((margin + 60, spec_y), f"•  {s}", fill=(51, 65, 85))
+            spec_y += 38
+
+        # Footer compliance badge
+        footer_y = size - margin - 80
+        draw.text((margin + 40, footer_y), "AI STUDIO CATALOG ASSET — 1000x1000 PURE WHITE BACKGROUND COMPLIANT", fill=(99, 102, 241))
+
+        new_file_id = uuid.uuid4()
+        saved_filename = f"{new_file_id}_catalog_mockup.jpg"
+        upload_dir = self._product_upload_dir(product_id)
+        out_path = upload_dir / saved_filename
+        canvas.save(out_path, "JPEG", quality=95)
+
+        url = f"/uploads/products/{product_id}/{saved_filename}"
+        new_image = ProductImage(
+            product_id=product_id,
+            url=url,
+            filename=f"Studio Mockup - {product.sku}.jpg",
+            image_type="white_bg",
+            sort_order=current_count,
+            is_primary=(current_count == 0),
+            is_ai_generated=True,
+        )
+        self.db.add(new_image)
+        await self.db.flush()
+        await self.db.refresh(new_image)
+
+        return {
+            "id": str(new_image.id),
+            "url": new_image.url,
+            "filename": new_image.filename,
+            "image_type": new_image.image_type,
+            "sort_order": new_image.sort_order,
+            "is_primary": new_image.is_primary,
+            "is_ai_generated": True,
+        }
+

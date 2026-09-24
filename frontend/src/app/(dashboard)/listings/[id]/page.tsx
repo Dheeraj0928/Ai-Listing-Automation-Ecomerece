@@ -30,6 +30,10 @@ export default function ListingDetailPage() {
   const [versions, setVersions] = useState<{ id: string; version_number: number; snapshot: Record<string, unknown>; changes: Record<string, unknown> | null; changed_by: string; change_reason: string; created_at: string }[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
 
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRollingBack, setIsRollingBack] = useState<string | null>(null);
+
   const listingId = params.id as string;
 
   useEffect(() => {
@@ -71,7 +75,6 @@ export default function ListingDetailPage() {
         type: result.is_valid ? 'success' : 'warning',
         title: result.is_valid ? 'Listing is valid!' : `${result.errors.length} issue(s) found`,
       });
-      // Refresh listing
       const updated = await api.get<MarketplaceListing>(`/listings/${listingId}`);
       setListing(updated);
     } catch {
@@ -90,13 +93,60 @@ export default function ListingDetailPage() {
   };
 
   const handlePublish = async () => {
+    setIsPublishing(true);
     try {
       await api.post(`/listings/${listingId}/publish`, {});
       const updated = await api.get<MarketplaceListing>(`/listings/${listingId}`);
       setListing(updated);
-      addToast({ type: 'success', title: 'Listing published!' });
+      addToast({ type: 'success', title: 'Listing published to marketplace!' });
     } catch {
       addToast({ type: 'error', title: 'Publish failed' });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleSyncPriceStock = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await api.post<{ status: string; data: { price: number; stock: number } }>(
+        `/listings/${listingId}/sync`,
+        {}
+      );
+      const updated = await api.get<MarketplaceListing>(`/listings/${listingId}`);
+      setListing(updated);
+      setEditData((updated.listing_data || {}) as Record<string, unknown>);
+      addToast({
+        type: 'success',
+        title: 'Price & Stock Synced!',
+        message: `Synced with master: Price Rs. ${res.data.price}, Stock ${res.data.stock}`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRollback = async (versionId: string, versionNumber: number) => {
+    if (!confirm(`Rollback this listing to Version ${versionNumber}?`)) return;
+    setIsRollingBack(versionId);
+    try {
+      const updated = await api.post<MarketplaceListing>(`/listings/${listingId}/rollback/${versionId}`, {});
+      setListing(updated);
+      setEditData((updated.listing_data || {}) as Record<string, unknown>);
+      addToast({ type: 'success', title: `Listing reverted to Version ${versionNumber}` });
+
+      // Refresh version list
+      const vers = await api.get<{ data: typeof versions }>(`/listings/${listingId}/versions`);
+      setVersions(vers.data || []);
+      setActiveTab('editor');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Rollback failed';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setIsRollingBack(null);
     }
   };
 
@@ -116,46 +166,76 @@ export default function ListingDetailPage() {
   const data = editData;
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <Link href="/listings" className="text-sm text-indigo-600 hover:text-indigo-700 mb-2 inline-block">&larr; Back to Listings</Link>
           <h1 className="text-2xl font-bold text-slate-800">
             {(data.title as string) || 'Untitled Listing'}
           </h1>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
             <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${statusColors[listing.status]}`}>
               {listing.status.replace(/_/g, ' ')}
             </span>
             <span className="text-sm text-slate-500">
               {listing.marketplace.charAt(0).toUpperCase() + listing.marketplace.slice(1)} &middot; v{listing.version}
             </span>
+            {listing.marketplace_listing_id && (
+              <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                ID: {listing.marketplace_listing_id}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {listing.status === 'published' && (
+            <button
+              onClick={handleSyncPriceStock}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors disabled:opacity-50"
+            >
+              {isSyncing ? (
+                <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              Sync Price &amp; Stock
+            </button>
+          )}
+
           <button
             onClick={handleValidate}
-            className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 rounded-xl hover:bg-amber-100 transition-colors"
+            className="px-3.5 py-2 text-sm font-medium text-amber-700 bg-amber-50 rounded-xl hover:bg-amber-100 transition-colors"
           >
             Validate
           </button>
+
           {listing.status === 'validated' && (
             <button
               onClick={handleApprove}
-              className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors"
+              className="px-3.5 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors"
             >
               Approve
             </button>
           )}
+
           {(listing.status === 'approved' || listing.status === 'validated') && (
             <button
               onClick={handlePublish}
-              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl hover:from-green-400 hover:to-emerald-500 transition-all shadow-sm"
+              disabled={isPublishing}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl hover:from-green-400 hover:to-emerald-500 transition-all shadow-sm disabled:opacity-50"
             >
-              Publish
+              {isPublishing ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : null}
+              {isPublishing ? 'Publishing...' : 'Publish'}
             </button>
           )}
+
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -165,6 +245,27 @@ export default function ListingDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Live Marketplace Banner */}
+      {listing.status === 'published' && (
+        <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                Live on {listing.marketplace.toUpperCase()} &middot; {listing.marketplace_listing_id}
+              </p>
+              <p className="text-xs text-emerald-700">
+                Last synced: {listing.last_synced_at ? new Date(listing.last_synced_at).toLocaleString('en-IN') : 'Just now'} &middot; Channel inventory active
+              </p>
+            </div>
+          </div>
+          <span className="text-xs px-2.5 py-1 bg-white border border-emerald-300 rounded-lg text-emerald-800 font-medium">
+            Active Channel
+          </span>
+        </div>
+      )}
+
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-slate-100 p-1 rounded-xl w-fit">
@@ -344,7 +445,7 @@ export default function ListingDetailPage() {
           ) : (
             versions.map((ver) => (
               <div key={ver.id} className="bg-white rounded-2xl border border-slate-200 p-5">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">
                       v{ver.version_number}
@@ -362,6 +463,25 @@ export default function ListingDetailPage() {
                       </p>
                     </div>
                   </div>
+
+                  {ver.version_number !== listing.version ? (
+                    <button
+                      onClick={() => handleRollback(ver.id, ver.version_number)}
+                      disabled={isRollingBack === ver.id}
+                      className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors border border-amber-200 disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {isRollingBack === ver.id ? (
+                        <div className="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span>↩</span>
+                      )}
+                      Rollback to v{ver.version_number}
+                    </button>
+                  ) : (
+                    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
+                      Current Active Version
+                    </span>
+                  )}
                 </div>
                 {ver.changes && Object.keys(ver.changes).length > 0 && (
                   <div className="mt-3 space-y-2">

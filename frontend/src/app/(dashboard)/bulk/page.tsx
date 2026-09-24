@@ -20,6 +20,50 @@ export default function BulkPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [activeJob, setActiveJob] = useState<JobStatus | null>(null);
   const [pollingId, setPollingId] = useState<NodeJS.Timeout | null>(null);
+  const [bulkMarketplaces, setBulkMarketplaces] = useState<string[]>(['amazon', 'flipkart', 'meesho']);
+  const [bulkTone, setBulkTone] = useState('professional');
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+
+  const handleBulkGenerate = async () => {
+    setIsBulkGenerating(true);
+    try {
+      // Fetch available products
+      const prodRes = await api.get<{ items: { id: string }[] }>('/products?page=1&page_size=100');
+      const productIds = (prodRes.items || []).map((p) => p.id);
+
+      if (productIds.length === 0) {
+        addToast({ type: 'warning', title: 'No products found to generate listings for' });
+        return;
+      }
+
+      const result = await api.post<{ job_id: string; total: number }>('/bulk/generate', {
+        product_ids: productIds,
+        marketplaces: bulkMarketplaces,
+        tone: bulkTone,
+      });
+
+      setActiveJob({
+        job_id: result.job_id,
+        status: 'processing',
+        total: result.total,
+        completed: 0,
+        created: 0,
+        errors: 0,
+      });
+
+      addToast({
+        type: 'info',
+        title: 'Bulk Generation Started',
+        message: `Queueing ${productIds.length} products across ${bulkMarketplaces.length} marketplaces`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Bulk generation failed';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setIsBulkGenerating(false);
+    }
+  };
+
 
   // Poll job status
   useEffect(() => {
@@ -195,11 +239,62 @@ export default function BulkPage() {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Bulk AI Generate</h3>
-            <p className="text-sm text-slate-500 mt-1">Generate AI listings for all products at once</p>
+            <p className="text-sm text-slate-500 mt-1">Batch generate listings across marketplaces</p>
           </div>
-          <p className="text-xs text-slate-400">
-            Select products from the Products page, then use &quot;Generate Listing&quot; for each, or use the API directly for bulk operations.
-          </p>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Target Marketplaces</label>
+              <div className="flex gap-2">
+                {[
+                  { id: 'amazon', label: 'Amazon' },
+                  { id: 'flipkart', label: 'Flipkart' },
+                  { id: 'meesho', label: 'Meesho' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      if (bulkMarketplaces.includes(m.id)) {
+                        if (bulkMarketplaces.length > 1) {
+                          setBulkMarketplaces(bulkMarketplaces.filter((x) => x !== m.id));
+                        }
+                      } else {
+                        setBulkMarketplaces([...bulkMarketplaces, m.id]);
+                      }
+                    }}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-all ${
+                      bulkMarketplaces.includes(m.id)
+                        ? 'bg-purple-50 text-purple-700 border-purple-300 font-semibold'
+                        : 'bg-white text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Writing Tone</label>
+              <select
+                value={bulkTone}
+                onChange={(e) => setBulkTone(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none"
+              >
+                <option value="professional">Professional &amp; Authoritative</option>
+                <option value="persuasive">Persuasive &amp; Sales-focused</option>
+                <option value="minimalist">Minimalist &amp; Clean</option>
+              </select>
+            </div>
+
+            <button
+              onClick={handleBulkGenerate}
+              disabled={isBulkGenerating}
+              className="w-full px-4 py-2 text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-500 hover:to-indigo-500 transition-all shadow-sm disabled:opacity-50"
+            >
+              {isBulkGenerating ? 'Starting Generation...' : 'Start Bulk AI Generation'}
+            </button>
+          </div>
         </div>
       </div>
 

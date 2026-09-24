@@ -73,3 +73,27 @@ async def set_primary_image(
     """Set a specific image as the primary product image."""
     service = ImageService(db)
     return await service.set_primary(user.id, product_id, image_id)
+
+
+@router.post("/{image_id}/studio-white-bg", status_code=201)
+async def convert_to_studio_white_bg(
+    product_id: uuid.UUID,
+    image_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Convert an existing product image to an Amazon-compliant 1000x1000 pure white background image."""
+    service = ImageService(db)
+    return await service.convert_to_white_background(user.id, product_id, image_id)
+
+
+@router.post("/generate-mockup", status_code=201)
+async def generate_product_mockup(
+    product_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate an AI studio catalog mockup card for the product with specifications."""
+    service = ImageService(db)
+    return await service.generate_product_mockup(user.id, product_id)
+

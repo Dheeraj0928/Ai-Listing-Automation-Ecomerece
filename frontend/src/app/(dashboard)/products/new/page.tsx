@@ -11,6 +11,23 @@ export default function NewProductPage() {
   const { addToast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
+  // Smart Reference Import State
+  const [importTab, setImportTab] = useState<'none' | 'url' | 'keyword'>('none');
+  const [importUrl, setImportUrl] = useState('');
+  const [importKeyword, setImportKeyword] = useState('');
+  const [isFetchingImport, setIsFetchingImport] = useState(false);
+  const [keywordSuggestions, setKeywordSuggestions] = useState<Array<{
+    title?: string;
+    brand?: string;
+    suggested_category?: string;
+    description?: string;
+    key_features?: string[];
+    suggested_price?: number;
+    attributes?: Record<string, string>;
+    keywords?: string[];
+    search_terms?: string[];
+  }>>([]);
+
   const [form, setForm] = useState({
     sku: '',
     product_name: '',
@@ -48,6 +65,107 @@ export default function NewProductPage() {
       bullets[index] = value;
       return { ...prev, bullet_points: bullets };
     });
+  };
+
+  const handleUrlImport = async () => {
+    if (!importUrl) {
+      addToast({ type: 'warning', title: 'Enter a product URL first' });
+      return;
+    }
+    setIsFetchingImport(true);
+    try {
+      const res = await api.post<{
+        status: string;
+        product: Product;
+        extracted_attributes?: Record<string, unknown>;
+      }>('/reference-import/from-url', {
+        url: importUrl,
+        marketplace: 'amazon',
+        tone: 'professional',
+      });
+      addToast({
+        type: 'success',
+        title: 'Product Imported Successfully!',
+        message: res.product.product_name,
+      });
+      router.push(`/products/${res.product.id}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'URL import failed';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setIsFetchingImport(false);
+    }
+  };
+
+  const handleKeywordSearch = async () => {
+    if (!importKeyword) {
+      addToast({ type: 'warning', title: 'Enter a keyword first' });
+      return;
+    }
+    setIsFetchingImport(true);
+    try {
+      const res = await api.post<{
+        status: string;
+        suggestions: Array<{
+          title?: string;
+          brand?: string;
+          suggested_category?: string;
+          description?: string;
+          key_features?: string[];
+          suggested_price?: number;
+          attributes?: Record<string, string>;
+          keywords?: string[];
+          search_terms?: string[];
+        }>;
+      }>('/reference-import/from-keyword', {
+        keyword: importKeyword,
+        marketplace: 'amazon',
+        tone: 'professional',
+      });
+      setKeywordSuggestions(res.suggestions || []);
+      if (!res.suggestions || res.suggestions.length === 0) {
+        addToast({ type: 'info', title: 'No suggestions generated' });
+      } else {
+        addToast({ type: 'success', title: `${res.suggestions.length} AI suggestions found!` });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Keyword search failed';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setIsFetchingImport(false);
+    }
+  };
+
+  const applySuggestion = (sug: {
+    title?: string;
+    brand?: string;
+    suggested_category?: string;
+    description?: string;
+    key_features?: string[];
+    suggested_price?: number;
+    attributes?: Record<string, string>;
+    keywords?: string[];
+    search_terms?: string[];
+  }) => {
+    setForm((prev) => ({
+      ...prev,
+      sku: `PROD-${Math.floor(1000 + Math.random() * 9000)}`,
+      product_name: sug.title || prev.product_name,
+      brand: sug.brand || prev.brand,
+      subcategory: sug.suggested_category || prev.subcategory,
+      description: sug.description || prev.description,
+      bullet_points: (sug.key_features && sug.key_features.length >= 5)
+        ? sug.key_features.slice(0, 5)
+        : [...(sug.key_features || []), ...prev.bullet_points].slice(0, 5),
+      price: sug.suggested_price ? String(sug.suggested_price) : prev.price,
+      mrp: sug.suggested_price ? String(Math.round(sug.suggested_price * 1.4)) : prev.mrp,
+      color: sug.attributes?.color || prev.color,
+      material: sug.attributes?.material || prev.material,
+      keywords: Array.isArray(sug.keywords) ? sug.keywords.join(', ') : prev.keywords,
+      search_terms: Array.isArray(sug.search_terms) ? sug.search_terms.join(', ') : prev.search_terms,
+    }));
+    addToast({ type: 'success', title: 'Form auto-filled from AI suggestion!' });
+    setImportTab('none');
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -115,6 +233,134 @@ export default function NewProductPage() {
         >
           Cancel
         </button>
+      </div>
+
+      {/* Smart Reference Import Card */}
+      <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-indigo-100 rounded-2xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Smart Reference Import</h2>
+              <p className="text-xs text-slate-500">Auto-fill this entire form using a competitor link or product keyword</p>
+            </div>
+          </div>
+
+          <div className="flex gap-1.5 bg-white/80 p-1 rounded-xl border border-indigo-100/60 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setImportTab(importTab === 'keyword' ? 'none' : 'keyword')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                importTab === 'keyword' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              By Keyword
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportTab(importTab === 'url' ? 'none' : 'url')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                importTab === 'url' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              By URL
+            </button>
+          </div>
+        </div>
+
+        {/* URL Import Tab */}
+        {importTab === 'url' && (
+          <div className="pt-2 space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                placeholder="Paste Amazon, Flipkart, or Meesho product link..."
+                className="flex-1 px-4 py-2.5 bg-white border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleUrlImport}
+                disabled={isFetchingImport}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2 shrink-0 shadow-sm"
+              >
+                {isFetchingImport ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : null}
+                {isFetchingImport ? 'Importing...' : 'Auto-Import Product'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              AI will extract product attributes, generate listings, and create the product automatically.
+            </p>
+          </div>
+        )}
+
+        {/* Keyword Search Tab */}
+        {importTab === 'keyword' && (
+          <div className="pt-2 space-y-4">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={importKeyword}
+                onChange={(e) => setImportKeyword(e.target.value)}
+                placeholder="e.g. Wireless Noise Cancelling Over-Ear Headphones"
+                className="flex-1 px-4 py-2.5 bg-white border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleKeywordSearch}
+                disabled={isFetchingImport}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2 shrink-0 shadow-sm"
+              >
+                {isFetchingImport ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : null}
+                {isFetchingImport ? 'Searching AI...' : 'Generate Suggestions'}
+              </button>
+            </div>
+
+            {keywordSuggestions.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                {keywordSuggestions.map((sug, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-xl border border-indigo-100 p-4 space-y-2.5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                          {sug.suggested_category || 'General'}
+                        </span>
+                        {sug.suggested_price && (
+                          <span className="text-xs font-bold text-emerald-600">
+                            ₹{sug.suggested_price}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-semibold text-slate-800 line-clamp-2">{sug.title}</p>
+                      {sug.description && (
+                        <p className="text-xs text-slate-500 line-clamp-2 mt-1">{sug.description}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => applySuggestion(sug)}
+                      className="w-full py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                    >
+                      Auto-Fill Form with this &rarr;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

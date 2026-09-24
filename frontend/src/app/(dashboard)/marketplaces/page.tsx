@@ -38,6 +38,9 @@ export default function MarketplacesPage() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [configModal, setConfigModal] = useState<string | null>(null);
+  const [credsForm, setCredsForm] = useState({ app_id: '', app_secret: '', is_live: false });
+  const [savingCreds, setSavingCreds] = useState(false);
   const { addToast } = useToast();
 
   const fetchAccounts = async () => {
@@ -108,6 +111,30 @@ export default function MarketplacesPage() {
     }
   };
 
+  const handleSaveCredentials = async () => {
+    if (!configModal) return;
+    setSavingCreds(true);
+    try {
+      await api.put(`/marketplaces/${configModal}`, {
+        credentials: {
+          app_id: credsForm.app_id,
+          app_secret: credsForm.app_secret,
+        },
+        config: {
+          mode: credsForm.is_live ? 'live' : 'mock',
+        },
+      });
+      addToast({ type: 'success', title: `${configModal.toUpperCase()} API credentials saved!` });
+      setConfigModal(null);
+      fetchAccounts();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setSavingCreds(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -120,91 +147,191 @@ export default function MarketplacesPage() {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-slate-800 mb-1">Marketplace Connections</h1>
-      <p className="text-sm text-slate-500 mb-6">Connect your seller accounts to publish listings directly</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Marketplace Accounts</h1>
+        <p className="text-slate-500 mt-1">Connect and manage your seller accounts across multiple marketplaces</p>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {marketplaceConfig.map(mp => {
-          const account = accounts.find(a => a.marketplace === mp.id);
-          const isConnected = account?.status === 'connected';
+      {/* Grid */}
+      <div className="grid md:grid-cols-3 gap-6">
+        {marketplaceConfig.map((mp) => {
+          const account = accounts.find((a) => a.marketplace === mp.id);
+          const isConnected = account && account.status === 'connected';
 
           return (
-            <div key={mp.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-              {/* Header gradient */}
-              <div className={`h-24 bg-gradient-to-br ${mp.gradient} flex items-center justify-center`}>
-                <span className="text-4xl">{mp.icon}</span>
-              </div>
-
-              <div className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-800">{mp.name}</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">{mp.description}</p>
+            <div
+              key={mp.id}
+              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+            >
+              <div>
+                <div className={`h-2 bg-gradient-to-r ${mp.gradient}`} />
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-xl ${mp.bg} flex items-center justify-center text-2xl`}>
+                        {mp.icon}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-800">{mp.name}</h3>
+                        <p className="text-xs text-slate-500">{mp.description}</p>
+                      </div>
+                    </div>
                   </div>
-                  {isConnected && (
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                      Connected
-                    </span>
+
+                  {isConnected ? (
+                    <div className="space-y-3">
+                      <div className="bg-slate-50 rounded-xl p-3.5 space-y-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Status</span>
+                          <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                            Connected &middot; {account?.config?.mode === 'live' ? 'Live API' : 'Sandbox (Mock)'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Active Listings</span>
+                          <span className="text-slate-700 font-medium">{account?.listing_count || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Last Synced</span>
+                          <span className="text-slate-700 font-medium">
+                            {account?.last_sync_at ? new Date(account.last_sync_at).toLocaleDateString('en-IN') : 'Just now'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleTestConnection(mp.id)}
+                          disabled={testing === mp.id}
+                          className="py-2 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        >
+                          {testing === mp.id ? 'Testing...' : 'Test Connection'}
+                        </button>
+                        <button
+                          onClick={() => handleSync(mp.id)}
+                          disabled={syncing === mp.id}
+                          className="py-2 text-xs font-medium text-indigo-700 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                        >
+                          {syncing === mp.id ? 'Syncing...' : 'Sync Stock'}
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setConfigModal(mp.id);
+                            setCredsForm({
+                              app_id: '',
+                              app_secret: '',
+                              is_live: account?.config?.mode === 'live',
+                            });
+                          }}
+                          className="flex-1 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+                        >
+                          API Credentials
+                        </button>
+                        <button
+                          onClick={() => handleDisconnect(mp.id)}
+                          className="py-1.5 px-3 text-xs font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleConnect(mp.id)}
+                      disabled={connecting === mp.id}
+                      className={`w-full py-2.5 text-sm font-medium text-white bg-gradient-to-r ${mp.gradient} rounded-xl hover:opacity-90 transition-all shadow-sm disabled:opacity-50`}
+                    >
+                      {connecting === mp.id ? 'Connecting...' : 'Connect Account'}
+                    </button>
                   )}
                 </div>
-
-                {isConnected ? (
-                  <div>
-                    <div className="bg-slate-50 rounded-xl p-3 mb-3">
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-slate-500">Account</span>
-                        <span className="text-slate-700 font-medium">{account?.account_name || '—'}</span>
-                      </div>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-slate-500">Listings</span>
-                        <span className="text-slate-700 font-medium">{account?.listing_count || 0}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Last Sync</span>
-                        <span className="text-slate-700 font-medium">
-                          {account?.last_sync_at ? new Date(account.last_sync_at).toLocaleDateString() : 'Never'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleTestConnection(mp.id)}
-                        disabled={testing === mp.id}
-                        className="flex-1 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                      >
-                        {testing === mp.id ? 'Testing...' : 'Test'}
-                      </button>
-                      <button
-                        onClick={() => handleSync(mp.id)}
-                        disabled={syncing === mp.id}
-                        className="flex-1 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                      >
-                        {syncing === mp.id ? 'Syncing...' : 'Sync'}
-                      </button>
-                      <button
-                        onClick={() => handleDisconnect(mp.id)}
-                        className="flex-1 py-2 text-xs font-medium text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleConnect(mp.id)}
-                    disabled={connecting === mp.id}
-                    className={`w-full py-2.5 text-sm font-medium text-white bg-gradient-to-r ${mp.gradient} rounded-xl hover:opacity-90 transition-all shadow-sm disabled:opacity-50`}
-                  >
-                    {connecting === mp.id ? 'Connecting...' : 'Connect Account'}
-                  </button>
-                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Credential Modal */}
+      {configModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900 capitalize">
+                {configModal} API Credentials
+              </h3>
+              <button
+                onClick={() => setConfigModal(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-semibold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  {configModal === 'amazon' ? 'Seller Central App ID / Client ID' : 'App ID / Client ID'}
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. amzn1.sp.solution.xxxx"
+                  value={credsForm.app_id}
+                  onChange={(e) => setCredsForm({ ...credsForm, app_id: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  App Secret / Client Secret
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••••••••••"
+                  value={credsForm.app_secret}
+                  onChange={(e) => setCredsForm({ ...credsForm, app_secret: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">Production Live Mode</p>
+                  <p className="text-xs text-slate-500">Toggle off to use verified mock sandbox</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={credsForm.is_live}
+                  onChange={(e) => setCredsForm({ ...credsForm, is_live: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 rounded"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfigModal(null)}
+                className="flex-1 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCredentials}
+                disabled={savingCreds}
+                className="flex-1 py-2 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {savingCreds ? 'Saving...' : 'Save & Verify'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -145,3 +145,24 @@ async def bulk_validate(
 ):
     results = await val_svc.bulk_validate(user_id=user.id, listing_ids=listing_ids)
     return {"status": "success", "data": results}
+
+
+@router.post("/{listing_id}/sync", summary="Sync price and inventory from master product")
+async def sync_listing(
+    listing_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    svc: ListingService = Depends(_get_listing_service),
+):
+    result = await svc.sync_listing_price_and_inventory(user_id=user.id, listing_id=listing_id)
+    return {"status": "success", "data": result}
+
+
+@router.post("/{listing_id}/rollback/{version_id}", response_model=ListingResponse, summary="Rollback listing to previous version")
+async def rollback_listing(
+    listing_id: uuid.UUID,
+    version_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    svc: ListingService = Depends(_get_listing_service),
+):
+    return await svc.rollback_version(user_id=user.id, listing_id=listing_id, version_id=version_id)
+
